@@ -373,10 +373,10 @@
         </div>
 
         <div class="stats-grid">
-            <div class="stat-card distance">
+            <div class="stat-card distance" id="distanceCard" title="길게 눌러서 초기화">
                 <div class="stat-value"><span id="totalDistance">0.00</span></div>
                 <div class="stat-unit">km</div>
-                <div class="stat-label">주행거리</div>
+                <div class="stat-label">누적거리</div>
             </div>
             <div class="stat-card max-speed">
                 <div class="stat-value"><span id="maxSpeed">0.0</span></div>
@@ -645,13 +645,13 @@
             statusText.textContent = 'GPS 대기중';
         }
 
-        // 초기화
+        // 초기화 (주행거리는 유지)
         function reset() {
             if (isTracking) {
                 stopTracking();
             }
 
-            totalDistance = 0;
+            // 주행거리는 초기화하지 않음
             maxSpeed = 0;
             speedSamples = [];
             elapsedSeconds = 0;
@@ -659,13 +659,20 @@
             lastPosition = null;
 
             currentSpeedEl.textContent = '0.0';
-            totalDistanceEl.textContent = '0.00';
+            // totalDistance는 유지
             maxSpeedEl.textContent = '0.0';
             avgSpeedEl.textContent = '0.0';
             elapsedTimeEl.textContent = '00:00:00';
             accuracyInfoEl.innerHTML = 'GPS 정확도: <span>--</span>m';
 
-            localStorage.removeItem('bikeSpeedometer');
+            saveData(); // 주행거리 유지하면서 저장
+        }
+
+        // 주행거리 완전 초기화 (별도 기능)
+        function resetDistance() {
+            totalDistance = 0;
+            totalDistanceEl.textContent = '0.00';
+            saveData();
         }
 
         // 이벤트 리스너
@@ -678,9 +685,29 @@
         });
 
         btnReset.addEventListener('click', () => {
-            if (confirm('모든 데이터를 초기화하시겠습니까?')) {
+            if (confirm('주행 기록을 초기화하시겠습니까?\n(누적 주행거리는 유지됩니다)')) {
                 reset();
             }
+        });
+
+        // 주행거리 카드 길게 누르기 (누적거리 초기화)
+        const distanceCard = document.getElementById('distanceCard');
+        let longPressTimer = null;
+
+        distanceCard.addEventListener('touchstart', (e) => {
+            longPressTimer = setTimeout(() => {
+                if (confirm('누적 주행거리를 초기화하시겠습니까?')) {
+                    resetDistance();
+                }
+            }, 1500); // 1.5초 길게 누르기
+        });
+
+        distanceCard.addEventListener('touchend', () => {
+            clearTimeout(longPressTimer);
+        });
+
+        distanceCard.addEventListener('touchmove', () => {
+            clearTimeout(longPressTimer);
         });
 
         // 화면 꺼짐 방지 (지원되는 경우)
