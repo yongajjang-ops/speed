@@ -362,6 +362,20 @@
         .fullscreen-btn:hover {
             background: rgba(0, 212, 255, 0.2);
         }
+
+        /* 화면 회전 방지 - 가로 모드일 때 강제 세로 표시 */
+        @media screen and (orientation: landscape) {
+            html {
+                transform: rotate(-90deg);
+                transform-origin: left top;
+                width: 100vh;
+                height: 100vw;
+                overflow-x: hidden;
+                position: absolute;
+                top: 100%;
+                left: 0;
+            }
+        }
     </style>
 </head>
 <body>
@@ -458,6 +472,63 @@
         let sessionDistance = 0;  // 세션 거리 (미터 단위)
         let maxSpeed = 0;         // km/h 단위
         let speedSamples = [];    // 평균 속도 계산용
+        let voiceAnnouncementInterval = null;  // 음성 안내 타이머
+        let currentSpeedValue = 0;  // 현재 속도 저장용
+
+        // 음성 안내 함수
+        function speakAnnouncement(text) {
+            if ('speechSynthesis' in window) {
+                // 이전 음성 중지
+                window.speechSynthesis.cancel();
+
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'ko-KR';
+                utterance.rate = 1.0;
+                utterance.pitch = 1.0;
+                utterance.volume = 1.0;
+
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        // 10분마다 음성 안내
+        function announceStatus() {
+            const now = new Date();
+            const hours = now.getHours();
+            const minutes = now.getMinutes();
+
+            // 현재 시간 포맷
+            const timeStr = `${hours}시 ${minutes}분`;
+
+            // 현재 속도
+            const speedStr = `${currentSpeedValue.toFixed(1)} 킬로미터`;
+
+            // 주행 거리 (세션 거리를 km로 변환)
+            const distanceKm = (sessionDistance / 1000).toFixed(2);
+            const distanceStr = `${distanceKm} 킬로미터`;
+
+            const announcement = `현재시간 ${timeStr}, 현재속도 ${speedStr}, 주행거리 ${distanceStr}`;
+
+            speakAnnouncement(announcement);
+        }
+
+        // 음성 안내 타이머 시작
+        function startVoiceAnnouncement() {
+            // 10분 = 600000ms
+            voiceAnnouncementInterval = setInterval(announceStatus, 600000);
+        }
+
+        // 음성 안내 타이머 정지
+        function stopVoiceAnnouncement() {
+            if (voiceAnnouncementInterval) {
+                clearInterval(voiceAnnouncementInterval);
+                voiceAnnouncementInterval = null;
+            }
+            // 음성 중지
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+            }
+        }
 
         // 로컬 스토리지에서 데이터 복원
         function loadSavedData() {
@@ -554,16 +625,22 @@
 
             // 속도 표시
             currentSpeedEl.textContent = currentSpeed.toFixed(1);
+            currentSpeedValue = currentSpeed;  // 음성 안내용 속도 저장
 
-            // 거리 누적 (정확도가 충분히 좋을 때만)
-            if (lastPosition && accuracy < 50 && currentSpeed > 1) {
+            // 거리 누적 (이동이 감지될 때)
+            if (lastPosition) {
                 const distance = calculateDistance(
                     lastPosition.latitude, lastPosition.longitude,
                     latitude, longitude
                 );
-                // 비정상적으로 큰 이동 필터링
-                if (distance < 100) { // 1초당 100m 이하만 허용
+                // GPS 정확도와 이동 거리 기반 필터링
+                // 최소 이동 거리: 정확도의 절반 이상 이동해야 유효한 이동으로 간주
+                const minDistance = Math.max(2, accuracy * 0.3);
+
+                // 비정상적으로 큰 이동 필터링 (100m 이하) & 노이즈 필터링
+                if (distance >= minDistance && distance < 100) {
                     totalDistance += distance;
+                    sessionDistance += distance;  // 세션 거리도 누적
                 }
             }
 
@@ -648,6 +725,9 @@
             );
 
             statusText.textContent = 'GPS 연결중...';
+
+            // 음성 안내 시작 (10분마다)
+            startVoiceAnnouncement();
         }
 
         // 추적 정지
@@ -669,8 +749,12 @@
                 watchId = null;
             }
 
+            // 음성 안내 정지
+            stopVoiceAnnouncement();
+
             // 현재 속도 0으로
             currentSpeedEl.textContent = '0.0';
+            currentSpeedValue = 0;
             statusDot.classList.remove('active');
             statusText.textContent = 'GPS 대기중';
         }
@@ -687,9 +771,12 @@
             elapsedSeconds = 0;
             startTime = null;
             lastPosition = null;
+            sessionDistance = 0;  // 세션 거리 초기화
+            currentSpeedValue = 0;
 
             currentSpeedEl.textContent = '0.0';
             // totalDistance는 유지
+            sessionDistanceEl.innerHTML = '0.00<span class="session-unit">km</span>';
             maxSpeedEl.textContent = '0.0';
             avgSpeedEl.textContent = '0.0';
             elapsedTimeEl.textContent = '00:00:00';
@@ -751,6 +838,15 @@
             }
         }
 
+        // 화면 세로 모드 고정
+        function lockPortraitOrientation() {
+            if (screen.orientation && screen.orientation.lock) {
+                screen.orientation.lock('portrait').catch(err => {
+                    console.log('화면 방향 고정 불가:', err);
+                });
+            }
+        }
+
         // 페이지 가시성 변경 시 Wake Lock 재요청
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && isTracking) {
@@ -804,6 +900,7 @@
             enterFullscreen();
             fullscreenOverlay.classList.add('hidden');
             requestWakeLock();
+            lockPortraitOrientation();  // 화면 세로 고정
             startTracking(); // GPS 추적 자동 시작
         });
 
@@ -823,6 +920,7 @@
             window.navigator.standalone === true) {
             fullscreenOverlay.classList.add('hidden');
             requestWakeLock();
+            lockPortraitOrientation();  // 화면 세로 고정
             startTracking(); // GPS 추적 자동 시작
         }
 
