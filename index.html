@@ -224,27 +224,47 @@
             transform: none !important;
         }
 
-        /* 시간 표시 */
-        .time-display {
-            text-align: center;
+        /* 주행 시간/거리 표시 */
+        .session-stats {
+            display: flex;
+            align-items: center;
+            justify-content: center;
             padding: 15px;
             background: rgba(0, 0, 0, 0.2);
             border-radius: 15px;
+            gap: 20px;
         }
 
-        .time-value {
-            font-size: 2rem;
+        .session-item {
+            text-align: center;
+            flex: 1;
+        }
+
+        .session-value {
+            font-size: 1.8rem;
             font-weight: 600;
             color: #00d4ff;
             font-variant-numeric: tabular-nums;
         }
 
-        .time-label {
-            font-size: 0.75rem;
+        .session-unit {
+            font-size: 0.9rem;
+            color: #888;
+            margin-left: 2px;
+        }
+
+        .session-label {
+            font-size: 0.7rem;
             color: #666;
             margin-top: 5px;
             text-transform: uppercase;
-            letter-spacing: 2px;
+            letter-spacing: 1px;
+        }
+
+        .session-divider {
+            width: 1px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.1);
         }
 
         /* 에러 메시지 */
@@ -390,9 +410,16 @@
             </div>
         </div>
 
-        <div class="time-display">
-            <div class="time-value" id="elapsedTime">00:00:00</div>
-            <div class="time-label">주행 시간</div>
+        <div class="session-stats">
+            <div class="session-item">
+                <div class="session-value" id="elapsedTime">00:00:00</div>
+                <div class="session-label">주행 시간</div>
+            </div>
+            <div class="session-divider"></div>
+            <div class="session-item">
+                <div class="session-value" id="sessionDistance">0.00<span class="session-unit">km</span></div>
+                <div class="session-label">주행 거리</div>
+            </div>
         </div>
 
         <div class="accuracy" id="accuracyInfo">
@@ -409,6 +436,7 @@
         // DOM 요소
         const currentSpeedEl = document.getElementById('currentSpeed');
         const totalDistanceEl = document.getElementById('totalDistance');
+        const sessionDistanceEl = document.getElementById('sessionDistance');
         const maxSpeedEl = document.getElementById('maxSpeed');
         const avgSpeedEl = document.getElementById('avgSpeed');
         const elapsedTimeEl = document.getElementById('elapsedTime');
@@ -426,9 +454,10 @@
         let elapsedSeconds = 0;
         let timerInterval = null;
         let lastPosition = null;
-        let totalDistance = 0;  // 미터 단위
-        let maxSpeed = 0;       // km/h 단위
-        let speedSamples = [];  // 평균 속도 계산용
+        let totalDistance = 0;    // 누적 거리 (미터 단위)
+        let sessionDistance = 0;  // 세션 거리 (미터 단위)
+        let maxSpeed = 0;         // km/h 단위
+        let speedSamples = [];    // 평균 속도 계산용
 
         // 로컬 스토리지에서 데이터 복원
         function loadSavedData() {
@@ -452,6 +481,7 @@
         // 표시 업데이트
         function updateDisplay() {
             totalDistanceEl.textContent = (totalDistance / 1000).toFixed(2);
+            sessionDistanceEl.innerHTML = (sessionDistance / 1000).toFixed(2) + '<span class="session-unit">km</span>';
             maxSpeedEl.textContent = maxSpeed.toFixed(1);
 
             // 평균 속도 계산
@@ -769,11 +799,12 @@
             }
         }
 
-        // 시작 오버레이 클릭 시 전체화면으로 시작
+        // 시작 오버레이 클릭 시 전체화면 + 자동 시작
         fullscreenOverlay.addEventListener('click', () => {
             enterFullscreen();
             fullscreenOverlay.classList.add('hidden');
             requestWakeLock();
+            startTracking(); // GPS 추적 자동 시작
         });
 
         // 전체화면 버튼 클릭
@@ -787,11 +818,12 @@
             fullscreenBtn.textContent = isFullscreen() ? '⛶' : '⛶';
         }
 
-        // PWA로 설치된 경우 오버레이 숨김
+        // PWA로 설치된 경우 오버레이 숨김 + 자동 시작
         if (window.matchMedia('(display-mode: standalone)').matches ||
             window.navigator.standalone === true) {
             fullscreenOverlay.classList.add('hidden');
             requestWakeLock();
+            startTracking(); // GPS 추적 자동 시작
         }
 
         // 초기화
