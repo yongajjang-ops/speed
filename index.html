@@ -273,9 +273,88 @@
         .accuracy span {
             color: #00d4ff;
         }
+
+        /* 전체 화면 시작 오버레이 */
+        .fullscreen-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            cursor: pointer;
+        }
+
+        .fullscreen-overlay.hidden {
+            display: none;
+        }
+
+        .fullscreen-icon {
+            font-size: 5rem;
+            margin-bottom: 30px;
+            animation: bounce 2s infinite;
+        }
+
+        .fullscreen-title {
+            font-size: 2rem;
+            color: #00d4ff;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .fullscreen-subtitle {
+            font-size: 1rem;
+            color: #888;
+            text-align: center;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-15px); }
+        }
+
+        /* 전체화면 토글 버튼 */
+        .fullscreen-btn {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            width: 40px;
+            height: 40px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 10px;
+            color: #00d4ff;
+            font-size: 1.2rem;
+            cursor: pointer;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 212, 255, 0.2);
+        }
     </style>
 </head>
 <body>
+    <!-- 전체 화면 시작 오버레이 -->
+    <div class="fullscreen-overlay" id="fullscreenOverlay">
+        <div class="fullscreen-icon">🚴</div>
+        <div class="fullscreen-title">자전거 속도계</div>
+        <div class="fullscreen-subtitle">화면을 터치하여 시작</div>
+    </div>
+
+    <!-- 전체화면 토글 버튼 -->
+    <button class="fullscreen-btn" id="fullscreenBtn" title="전체화면">⛶</button>
+
     <div class="container">
         <div class="header">
             <h1>🚴 자전거 속도계</h1>
@@ -621,6 +700,72 @@
                 requestWakeLock();
             }
         });
+
+        // 전체화면 관련
+        const fullscreenOverlay = document.getElementById('fullscreenOverlay');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        // 전체화면 전환 함수
+        function enterFullscreen() {
+            const elem = document.documentElement;
+            if (elem.requestFullscreen) {
+                elem.requestFullscreen();
+            } else if (elem.webkitRequestFullscreen) {
+                elem.webkitRequestFullscreen();
+            } else if (elem.msRequestFullscreen) {
+                elem.msRequestFullscreen();
+            }
+        }
+
+        // 전체화면 종료 함수
+        function exitFullscreen() {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            } else if (document.msExitFullscreen) {
+                document.msExitFullscreen();
+            }
+        }
+
+        // 전체화면 상태 확인
+        function isFullscreen() {
+            return !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
+        }
+
+        // 전체화면 토글
+        function toggleFullscreen() {
+            if (isFullscreen()) {
+                exitFullscreen();
+            } else {
+                enterFullscreen();
+            }
+        }
+
+        // 시작 오버레이 클릭 시 전체화면으로 시작
+        fullscreenOverlay.addEventListener('click', () => {
+            enterFullscreen();
+            fullscreenOverlay.classList.add('hidden');
+            requestWakeLock();
+        });
+
+        // 전체화면 버튼 클릭
+        fullscreenBtn.addEventListener('click', toggleFullscreen);
+
+        // 전체화면 상태 변경 감지
+        document.addEventListener('fullscreenchange', updateFullscreenButton);
+        document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
+
+        function updateFullscreenButton() {
+            fullscreenBtn.textContent = isFullscreen() ? '⛶' : '⛶';
+        }
+
+        // PWA로 설치된 경우 오버레이 숨김
+        if (window.matchMedia('(display-mode: standalone)').matches ||
+            window.navigator.standalone === true) {
+            fullscreenOverlay.classList.add('hidden');
+            requestWakeLock();
+        }
 
         // 초기화
         loadSavedData();
