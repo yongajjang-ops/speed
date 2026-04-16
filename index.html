@@ -786,21 +786,60 @@
             }
         }
 
-        // 요약 모달 닫기 및 앱 종료
+        // 요약 모달 닫기 및 앱/브라우저 완전 종료
         document.getElementById('summaryCloseBtn').addEventListener('click', () => {
             document.getElementById('summaryModal').classList.add('hidden');
 
-            // 앱 완전 종료
-            // PWA나 브라우저에서 창 닫기 시도
-            window.close();
-
-            // window.close()가 작동하지 않는 경우 (보안 정책으로 인해)
-            // 빈 페이지로 이동하거나 히스토리 뒤로 가기
-            setTimeout(() => {
-                // 창이 닫히지 않았다면 about:blank로 이동
-                window.location.href = 'about:blank';
-            }, 100);
+            // 앱/브라우저 완전 종료 시도
+            closeApp();
         });
+
+        // 앱/브라우저 종료 함수
+        function closeApp() {
+            // 1. 전체화면 종료
+            if (isFullscreen()) {
+                exitFullscreen();
+            }
+
+            // 2. GPS 추적 및 모든 인터벌 정리
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+            }
+            if (timerInterval) clearInterval(timerInterval);
+            if (voiceAnnouncementInterval) clearInterval(voiceAnnouncementInterval);
+            if (autoStopCheckInterval) clearInterval(autoStopCheckInterval);
+
+            // 3. 다양한 방법으로 창/브라우저 닫기 시도
+            try {
+                // 방법 1: window.close() - PWA나 window.open으로 열린 창에서 작동
+                window.close();
+
+                // 방법 2: 히스토리 조작으로 뒤로 가기 (Android 브라우저에서 효과적)
+                setTimeout(() => {
+                    window.history.go(-(window.history.length));
+                }, 100);
+
+                // 방법 3: self.close() 시도
+                setTimeout(() => {
+                    self.close();
+                }, 200);
+
+                // 방법 4: 빈 페이지로 이동 후 닫기 시도
+                setTimeout(() => {
+                    window.open('', '_self');
+                    window.close();
+                }, 300);
+
+                // 방법 5: 최후의 수단 - about:blank로 이동
+                setTimeout(() => {
+                    window.location.replace('about:blank');
+                }, 500);
+
+            } catch (e) {
+                // 모든 방법 실패 시 about:blank로 이동
+                window.location.replace('about:blank');
+            }
+        }
 
         // 로컬 스토리지에서 데이터 복원
         function loadSavedData() {
