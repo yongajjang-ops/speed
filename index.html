@@ -474,6 +474,10 @@
         let speedSamples = [];    // 평균 속도 계산용
         let voiceAnnouncementInterval = null;  // 음성 안내 타이머
         let currentSpeedValue = 0;  // 현재 속도 저장용
+        let lastMovementTime = null;  // 마지막 이동 감지 시간
+        let isAutoPaused = false;  // 자동 일시정지 상태
+        let autoPauseCheckInterval = null;  // 자동 일시정지 체크 타이머
+        const AUTO_PAUSE_TIMEOUT = 60000;  // 1분 (60초)
 
         // 음성 안내 함수
         function speakAnnouncement(text) {
@@ -530,6 +534,77 @@
             }
         }
 
+        // 자동 일시정지
+        function autoPause() {
+            if (!isAutoPaused && isTracking) {
+                isAutoPaused = true;
+
+                // 타이머 일시정지
+                if (timerInterval) {
+                    clearInterval(timerInterval);
+                    timerInterval = null;
+                }
+
+                // 음성 안내 일시정지
+                stopVoiceAnnouncement();
+
+                // 상태 표시 업데이트
+                statusText.textContent = '일시정지 (대기중)';
+                statusDot.classList.remove('active');
+
+                // 현재 속도 0으로 표시
+                currentSpeedEl.textContent = '0.0';
+                currentSpeedValue = 0;
+
+                console.log('자동 일시정지: 1분간 움직임 없음');
+            }
+        }
+
+        // 자동 재시작
+        function autoResume() {
+            if (isAutoPaused && isTracking) {
+                isAutoPaused = false;
+
+                // 타이머 재시작
+                if (!timerInterval) {
+                    startTime = Date.now() - (elapsedSeconds * 1000);
+                    timerInterval = setInterval(() => {
+                        elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+                        elapsedTimeEl.textContent = formatTime(elapsedSeconds);
+                    }, 1000);
+                }
+
+                // 음성 안내 재시작
+                startVoiceAnnouncement();
+
+                // 상태 표시 업데이트
+                statusText.textContent = 'GPS 연결됨';
+                statusDot.classList.add('active');
+
+                console.log('자동 재시작: 움직임 감지');
+            }
+        }
+
+        // 자동 일시정지 체크 시작
+        function startAutoPauseCheck() {
+            lastMovementTime = Date.now();
+            autoPauseCheckInterval = setInterval(() => {
+                if (!isAutoPaused && Date.now() - lastMovementTime > AUTO_PAUSE_TIMEOUT) {
+                    autoPause();
+                }
+            }, 5000);  // 5초마다 체크
+        }
+
+        // 자동 일시정지 체크 정지
+        function stopAutoPauseCheck() {
+            if (autoPauseCheckInterval) {
+                clearInterval(autoPauseCheckInterval);
+                autoPauseCheckInterval = null;
+            }
+            isAutoPaused = false;
+            lastMovementTime = null;
+        }
+
         // 로컬 스토리지에서 데이터 복원
         function loadSavedData() {
             const saved = localStorage.getItem('bikeSpeedometer');
@@ -547,6 +622,40 @@
                 totalDistance,
                 maxSpeed
             }));
+        }
+
+        // 세션 데이터 저장 (백그라운드 대응)
+        function saveSessionData() {
+            if (isTracking && startTime) {
+                localStorage.setItem('bikeSession', JSON.stringify({
+                    isTracking: true,
+                    startTime: startTime,
+                    elapsedSeconds: elapsedSeconds,
+                    sessionDistance: sessionDistance,
+                    speedSamples: speedSamples,
+                    maxSpeed: maxSpeed,
+                    lastPosition: lastPosition,
+                    savedAt: Date.now()
+                }));
+            }
+        }
+
+        // 세션 데이터 복원 (백그라운드에서 복귀 시)
+        function loadSessionData() {
+            const saved = localStorage.getItem('bikeSession');
+            if (saved) {
+                const data = JSON.parse(saved);
+                // 5분 이내에 저장된 데이터만 복원 (앱이 완전히 종료된 경우 제외)
+                if (data.savedAt && Date.now() - data.savedAt < 300000) {
+                    return data;
+                }
+            }
+            return null;
+        }
+
+        // 세션 데이터 삭제
+        function clearSessionData() {
+            localStorage.removeItem('bikeSession');
         }
 
         // 표시 업데이트
@@ -639,8 +748,19 @@
 
                 // 비정상적으로 큰 이동 필터링 (100m 이하) & 노이즈 필터링
                 if (distance >= minDistance && distance < 100) {
-                    totalDistance += distance;
-                    sessionDistance += distance;  // 세션 거리도 누적
+                    // 움직임 감지 - 마지막 이동 시간 업데이트
+                    lastMovementTime = Date.now();
+
+                    // 일시정지 상태이면 자동 재시작
+                    if (isAutoPaused) {
+                        autoResume();
+                    }
+
+                    // 일시정지 상태가 아닐 때만 거리 누적
+                    if (!isAutoPaused) {
+                        totalDistance += distance;
+                        sessionDistance += distance;  // 세션 거리도 누적
+                    }
                 }
             }
 
@@ -728,6 +848,9 @@
 
             // 음성 안내 시작 (10분마다)
             startVoiceAnnouncement();
+
+            // 자동 일시정지 체크 시작
+            startAutoPauseCheck();
         }
 
         // 추적 정지
@@ -751,6 +874,12 @@
 
             // 음성 안내 정지
             stopVoiceAnnouncement();
+
+            // 자동 일시정지 체크 정지
+            stopAutoPauseCheck();
+
+            // 세션 데이터 삭제 (정상 종료)
+            clearSessionData();
 
             // 현재 속도 0으로
             currentSpeedEl.textContent = '0.0';
@@ -847,10 +976,60 @@
             }
         }
 
-        // 페이지 가시성 변경 시 Wake Lock 재요청
+        // 페이지 가시성 변경 시 처리 (백그라운드 대응)
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible' && isTracking) {
-                requestWakeLock();
+            if (document.visibilityState === 'visible') {
+                // 포그라운드로 복귀
+                console.log('앱 포그라운드 복귀');
+
+                if (isTracking) {
+                    requestWakeLock();
+
+                    // 타이머 UI 즉시 업데이트 (백그라운드에서 타이머가 멈췄어도 정확한 시간 표시)
+                    if (startTime) {
+                        elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+                        elapsedTimeEl.textContent = formatTime(elapsedSeconds);
+                    }
+
+                    // 타이머 인터벌이 멈췄으면 재시작
+                    if (!timerInterval && !isAutoPaused) {
+                        timerInterval = setInterval(() => {
+                            elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+                            elapsedTimeEl.textContent = formatTime(elapsedSeconds);
+                        }, 1000);
+                    }
+
+                    updateDisplay();
+                } else {
+                    // 추적 중이 아니지만 세션 데이터가 있는지 확인 (앱이 백그라운드에서 종료됐을 수 있음)
+                    const sessionData = loadSessionData();
+                    if (sessionData && sessionData.isTracking) {
+                        // 이전 세션 복원 여부 확인
+                        if (confirm('이전 주행 기록이 있습니다. 계속하시겠습니까?')) {
+                            // 세션 데이터 복원
+                            startTime = sessionData.startTime;
+                            elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+                            sessionDistance = sessionData.sessionDistance || 0;
+                            speedSamples = sessionData.speedSamples || [];
+                            maxSpeed = sessionData.maxSpeed || 0;
+                            lastPosition = sessionData.lastPosition || null;
+
+                            // 추적 재시작
+                            startTracking();
+                        } else {
+                            clearSessionData();
+                        }
+                    }
+                }
+            } else {
+                // 백그라운드로 전환
+                console.log('앱 백그라운드 전환');
+
+                if (isTracking) {
+                    // 현재 세션 데이터 저장
+                    saveSessionData();
+                    saveData();
+                }
             }
         });
 
@@ -924,8 +1103,47 @@
             startTracking(); // GPS 추적 자동 시작
         }
 
+        // 페이지 종료 전 데이터 저장
+        window.addEventListener('beforeunload', () => {
+            if (isTracking) {
+                saveSessionData();
+                saveData();
+            }
+        });
+
+        // 페이지 숨김 시 데이터 저장 (모바일에서 beforeunload가 작동하지 않을 수 있음)
+        window.addEventListener('pagehide', () => {
+            if (isTracking) {
+                saveSessionData();
+                saveData();
+            }
+        });
+
         // 초기화
         loadSavedData();
+
+        // 앱 시작 시 이전 세션 확인
+        const previousSession = loadSessionData();
+        if (previousSession && previousSession.isTracking) {
+            // PWA나 전체화면 모드가 아닌 경우에만 복원 확인
+            if (!window.matchMedia('(display-mode: standalone)').matches &&
+                window.navigator.standalone !== true) {
+                setTimeout(() => {
+                    if (confirm('이전 주행 기록이 있습니다. 계속하시겠습니까?')) {
+                        startTime = previousSession.startTime;
+                        elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+                        sessionDistance = previousSession.sessionDistance || 0;
+                        speedSamples = previousSession.speedSamples || [];
+                        maxSpeed = previousSession.maxSpeed || 0;
+                        lastPosition = previousSession.lastPosition || null;
+                        fullscreenOverlay.classList.add('hidden');
+                        startTracking();
+                    } else {
+                        clearSessionData();
+                    }
+                }, 500);
+            }
+        }
     </script>
 </body>
 </html>
