@@ -43,6 +43,16 @@
             margin-bottom: 10px;
         }
 
+        .current-time {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: #ffffff;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 2px;
+            margin-bottom: 5px;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        }
+
         .header h1 {
             font-size: 1.5rem;
             font-weight: 600;
@@ -391,6 +401,7 @@
 
     <div class="container">
         <div class="header">
+            <div class="current-time" id="currentTime">00:00:00</div>
             <h1>🚴 자전거 속도계</h1>
             <div class="status">
                 <div class="status-dot" id="statusDot"></div>
@@ -460,6 +471,20 @@
         const errorMessage = document.getElementById('errorMessage');
         const btnStart = document.getElementById('btnStart');
         const btnReset = document.getElementById('btnReset');
+        const currentTimeEl = document.getElementById('currentTime');
+
+        // 현재 시간 업데이트
+        function updateCurrentTime() {
+            const now = new Date();
+            const hours = now.getHours().toString().padStart(2, '0');
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            const seconds = now.getSeconds().toString().padStart(2, '0');
+            currentTimeEl.textContent = `${hours}:${minutes}:${seconds}`;
+        }
+
+        // 현재 시간 타이머 시작
+        updateCurrentTime();
+        setInterval(updateCurrentTime, 1000);
 
         // 상태 변수
         let isTracking = false;
