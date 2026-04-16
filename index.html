@@ -786,9 +786,20 @@
             }
         }
 
-        // 요약 모달 닫기
+        // 요약 모달 닫기 및 앱 종료
         document.getElementById('summaryCloseBtn').addEventListener('click', () => {
             document.getElementById('summaryModal').classList.add('hidden');
+
+            // 앱 완전 종료
+            // PWA나 브라우저에서 창 닫기 시도
+            window.close();
+
+            // window.close()가 작동하지 않는 경우 (보안 정책으로 인해)
+            // 빈 페이지로 이동하거나 히스토리 뒤로 가기
+            setTimeout(() => {
+                // 창이 닫히지 않았다면 about:blank로 이동
+                window.location.href = 'about:blank';
+            }, 100);
         });
 
         // 로컬 스토리지에서 데이터 복원
