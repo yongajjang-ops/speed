@@ -230,6 +230,17 @@
             background: linear-gradient(145deg, #555, #444);
         }
 
+        .btn-end {
+            background: linear-gradient(145deg, #ff8c00, #cc7000);
+            color: white;
+            box-shadow: 0 10px 30px rgba(255, 140, 0, 0.3);
+        }
+
+        .btn-end:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 40px rgba(255, 140, 0, 0.4);
+        }
+
         .btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
@@ -293,6 +304,111 @@
 
         .error-message.show {
             display: block;
+        }
+
+        /* 주행 요약 모달 */
+        .summary-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            padding: 20px;
+        }
+
+        .summary-modal.hidden {
+            display: none;
+        }
+
+        .summary-content {
+            background: linear-gradient(145deg, #1e2a4a, #152238);
+            border-radius: 20px;
+            padding: 25px;
+            max-width: 350px;
+            width: 100%;
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .summary-header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .summary-header h2 {
+            color: #00d4ff;
+            font-size: 1.3rem;
+            margin-bottom: 5px;
+        }
+
+        .summary-header p {
+            color: #888;
+            font-size: 0.85rem;
+        }
+
+        .summary-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .summary-stat {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .summary-stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #00ff88;
+        }
+
+        .summary-stat-label {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 5px;
+            text-transform: uppercase;
+        }
+
+        .summary-stat.distance .summary-stat-value {
+            color: #ffaa00;
+        }
+
+        .summary-stat.time .summary-stat-value {
+            color: #00d4ff;
+        }
+
+        .summary-stat.max .summary-stat-value {
+            color: #ff6b6b;
+        }
+
+        .summary-stat.avg .summary-stat-value {
+            color: #a855f7;
+        }
+
+        .summary-btn {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            background: linear-gradient(145deg, #00d4ff, #0099cc);
+            color: #000;
+            transition: all 0.3s ease;
+        }
+
+        .summary-btn:hover {
+            transform: translateY(-2px);
         }
 
         /* GPS 정확도 표시 */
@@ -391,6 +507,35 @@
     </style>
 </head>
 <body>
+    <!-- 주행 요약 모달 -->
+    <div class="summary-modal hidden" id="summaryModal">
+        <div class="summary-content">
+            <div class="summary-header">
+                <h2>🚴 주행이 자동 저장되었습니다</h2>
+                <p id="summaryDate">2024년 1월 1일 주행 기록</p>
+            </div>
+            <div class="summary-stats">
+                <div class="summary-stat distance">
+                    <div class="summary-stat-value" id="summaryDistance">0.00 km</div>
+                    <div class="summary-stat-label">주행 거리</div>
+                </div>
+                <div class="summary-stat time">
+                    <div class="summary-stat-value" id="summaryTime">00:00:00</div>
+                    <div class="summary-stat-label">주행 시간</div>
+                </div>
+                <div class="summary-stat max">
+                    <div class="summary-stat-value" id="summaryMaxSpeed">0.0 km/h</div>
+                    <div class="summary-stat-label">최고 속도</div>
+                </div>
+                <div class="summary-stat avg">
+                    <div class="summary-stat-value" id="summaryAvgSpeed">0.0 km/h</div>
+                    <div class="summary-stat-label">평균 속도</div>
+                </div>
+            </div>
+            <button class="summary-btn" id="summaryCloseBtn">확인</button>
+        </div>
+    </div>
+
     <!-- 전체 화면 시작 오버레이 -->
     <div class="fullscreen-overlay" id="fullscreenOverlay">
         <div class="fullscreen-icon">🚴</div>
@@ -455,6 +600,7 @@
 
         <div class="controls">
             <button class="btn btn-start" id="btnStart">시작</button>
+            <button class="btn btn-end" id="btnEnd" disabled>종료</button>
             <button class="btn btn-reset" id="btnReset">초기화</button>
         </div>
     </div>
@@ -472,6 +618,7 @@
         const statusText = document.getElementById('statusText');
         const errorMessage = document.getElementById('errorMessage');
         const btnStart = document.getElementById('btnStart');
+        const btnEnd = document.getElementById('btnEnd');
         const btnReset = document.getElementById('btnReset');
         const currentTimeEl = document.getElementById('currentTime');
 
@@ -502,9 +649,8 @@
         let voiceAnnouncementInterval = null;  // 음성 안내 타이머
         let currentSpeedValue = 0;  // 현재 속도 저장용
         let lastMovementTime = null;  // 마지막 이동 감지 시간
-        let isAutoPaused = false;  // 자동 일시정지 상태
-        let autoPauseCheckInterval = null;  // 자동 일시정지 체크 타이머
-        const AUTO_PAUSE_TIMEOUT = 60000;  // 1분 (60초)
+        let autoStopCheckInterval = null;  // 자동 종료 체크 타이머
+        const AUTO_STOP_TIMEOUT = 300000;  // 5분 (300초)
 
         // 음성 안내 함수
         function speakAnnouncement(text) {
@@ -561,76 +707,89 @@
             }
         }
 
-        // 자동 일시정지
-        function autoPause() {
-            if (!isAutoPaused && isTracking) {
-                isAutoPaused = true;
+        // 자동 종료 (5분간 움직임 없을 때)
+        function autoStop() {
+            if (isTracking) {
+                console.log('자동 종료: 5분간 움직임 없음');
 
-                // 타이머 일시정지
-                if (timerInterval) {
-                    clearInterval(timerInterval);
-                    timerInterval = null;
+                // 평균 속도 계산
+                let avgSpeed = 0;
+                if (speedSamples.length > 0) {
+                    avgSpeed = speedSamples.reduce((a, b) => a + b, 0) / speedSamples.length;
                 }
 
-                // 음성 안내 일시정지
-                stopVoiceAnnouncement();
+                // 자동 저장 데이터 저장
+                const autoSavedData = {
+                    date: new Date().toISOString(),
+                    sessionDistance: sessionDistance,
+                    elapsedSeconds: elapsedSeconds,
+                    maxSpeed: maxSpeed,
+                    avgSpeed: avgSpeed
+                };
+                localStorage.setItem('autoSavedSession', JSON.stringify(autoSavedData));
 
-                // 상태 표시 업데이트
-                statusText.textContent = '일시정지 (대기중)';
-                statusDot.classList.remove('active');
+                // 추적 종료
+                stopTracking();
 
-                // 현재 속도 0으로 표시
-                currentSpeedEl.textContent = '0.0';
-                currentSpeedValue = 0;
-
-                console.log('자동 일시정지: 1분간 움직임 없음');
+                // 상태 표시
+                statusText.textContent = '자동 종료됨';
             }
         }
 
-        // 자동 재시작
-        function autoResume() {
-            if (isAutoPaused && isTracking) {
-                isAutoPaused = false;
-
-                // 타이머 재시작
-                if (!timerInterval) {
-                    startTime = Date.now() - (elapsedSeconds * 1000);
-                    timerInterval = setInterval(() => {
-                        elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
-                        elapsedTimeEl.textContent = formatTime(elapsedSeconds);
-                    }, 1000);
-                }
-
-                // 음성 안내 재시작
-                startVoiceAnnouncement();
-
-                // 상태 표시 업데이트
-                statusText.textContent = 'GPS 연결됨';
-                statusDot.classList.add('active');
-
-                console.log('자동 재시작: 움직임 감지');
-            }
-        }
-
-        // 자동 일시정지 체크 시작
-        function startAutoPauseCheck() {
+        // 자동 종료 체크 시작
+        function startAutoStopCheck() {
             lastMovementTime = Date.now();
-            autoPauseCheckInterval = setInterval(() => {
-                if (!isAutoPaused && Date.now() - lastMovementTime > AUTO_PAUSE_TIMEOUT) {
-                    autoPause();
+            autoStopCheckInterval = setInterval(() => {
+                if (isTracking && Date.now() - lastMovementTime > AUTO_STOP_TIMEOUT) {
+                    autoStop();
                 }
-            }, 5000);  // 5초마다 체크
+            }, 10000);  // 10초마다 체크
         }
 
-        // 자동 일시정지 체크 정지
-        function stopAutoPauseCheck() {
-            if (autoPauseCheckInterval) {
-                clearInterval(autoPauseCheckInterval);
-                autoPauseCheckInterval = null;
+        // 자동 종료 체크 정지
+        function stopAutoStopCheck() {
+            if (autoStopCheckInterval) {
+                clearInterval(autoStopCheckInterval);
+                autoStopCheckInterval = null;
             }
-            isAutoPaused = false;
             lastMovementTime = null;
         }
+
+        // 자동 저장된 세션 요약 표시
+        function showAutoSavedSummary() {
+            const saved = localStorage.getItem('autoSavedSession');
+            if (saved) {
+                const data = JSON.parse(saved);
+                const date = new Date(data.date);
+
+                // 날짜 포맷
+                const dateStr = `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일 주행 기록`;
+                document.getElementById('summaryDate').textContent = dateStr;
+
+                // 주행 거리
+                document.getElementById('summaryDistance').textContent = (data.sessionDistance / 1000).toFixed(2) + ' km';
+
+                // 주행 시간
+                document.getElementById('summaryTime').textContent = formatTime(data.elapsedSeconds);
+
+                // 최고 속도
+                document.getElementById('summaryMaxSpeed').textContent = data.maxSpeed.toFixed(1) + ' km/h';
+
+                // 평균 속도
+                document.getElementById('summaryAvgSpeed').textContent = data.avgSpeed.toFixed(1) + ' km/h';
+
+                // 모달 표시
+                document.getElementById('summaryModal').classList.remove('hidden');
+
+                // 자동 저장 데이터 삭제
+                localStorage.removeItem('autoSavedSession');
+            }
+        }
+
+        // 요약 모달 닫기
+        document.getElementById('summaryCloseBtn').addEventListener('click', () => {
+            document.getElementById('summaryModal').classList.add('hidden');
+        });
 
         // 로컬 스토리지에서 데이터 복원
         function loadSavedData() {
@@ -778,16 +937,9 @@
                     // 움직임 감지 - 마지막 이동 시간 업데이트
                     lastMovementTime = Date.now();
 
-                    // 일시정지 상태이면 자동 재시작
-                    if (isAutoPaused) {
-                        autoResume();
-                    }
-
-                    // 일시정지 상태가 아닐 때만 거리 누적
-                    if (!isAutoPaused) {
-                        totalDistance += distance;
-                        sessionDistance += distance;  // 세션 거리도 누적
-                    }
+                    // 거리 누적
+                    totalDistance += distance;
+                    sessionDistance += distance;  // 세션 거리도 누적
                 }
             }
 
@@ -876,8 +1028,11 @@
             // 음성 안내 시작 (10분마다)
             startVoiceAnnouncement();
 
-            // 자동 일시정지 체크 시작
-            startAutoPauseCheck();
+            // 자동 종료 체크 시작 (5분간 움직임 없으면 자동 종료)
+            startAutoStopCheck();
+
+            // 종료 버튼 활성화
+            btnEnd.disabled = false;
         }
 
         // 추적 정지
@@ -902,8 +1057,8 @@
             // 음성 안내 정지
             stopVoiceAnnouncement();
 
-            // 자동 일시정지 체크 정지
-            stopAutoPauseCheck();
+            // 자동 종료 체크 정지
+            stopAutoStopCheck();
 
             // 세션 데이터 삭제 (정상 종료)
             clearSessionData();
@@ -913,6 +1068,9 @@
             currentSpeedValue = 0;
             statusDot.classList.remove('active');
             statusText.textContent = 'GPS 대기중';
+
+            // 종료 버튼 비활성화
+            btnEnd.disabled = true;
         }
 
         // 초기화 (주행거리는 유지)
@@ -960,6 +1118,39 @@
         btnReset.addEventListener('click', () => {
             if (confirm('주행 기록을 초기화하시겠습니까?\n(누적 주행거리는 유지됩니다)')) {
                 reset();
+            }
+        });
+
+        // 종료 버튼 - 주행 종료 및 요약 표시
+        btnEnd.addEventListener('click', () => {
+            if (isTracking) {
+                // 평균 속도 계산
+                let avgSpeed = 0;
+                if (speedSamples.length > 0) {
+                    avgSpeed = speedSamples.reduce((a, b) => a + b, 0) / speedSamples.length;
+                }
+
+                // 주행 요약 데이터 준비
+                const summaryData = {
+                    date: new Date().toISOString(),
+                    sessionDistance: sessionDistance,
+                    elapsedSeconds: elapsedSeconds,
+                    maxSpeed: maxSpeed,
+                    avgSpeed: avgSpeed
+                };
+
+                // 추적 종료
+                stopTracking();
+
+                // 주행 요약 표시
+                const date = new Date(summaryData.date);
+                const dateStr = `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일 주행 기록`;
+                document.getElementById('summaryDate').textContent = dateStr;
+                document.getElementById('summaryDistance').textContent = (summaryData.sessionDistance / 1000).toFixed(2) + ' km';
+                document.getElementById('summaryTime').textContent = formatTime(summaryData.elapsedSeconds);
+                document.getElementById('summaryMaxSpeed').textContent = summaryData.maxSpeed.toFixed(1) + ' km/h';
+                document.getElementById('summaryAvgSpeed').textContent = summaryData.avgSpeed.toFixed(1) + ' km/h';
+                document.getElementById('summaryModal').classList.remove('hidden');
             }
         });
 
@@ -1019,7 +1210,7 @@
                     }
 
                     // 타이머 인터벌이 멈췄으면 재시작
-                    if (!timerInterval && !isAutoPaused) {
+                    if (!timerInterval) {
                         timerInterval = setInterval(() => {
                             elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
                             elapsedTimeEl.textContent = formatTime(elapsedSeconds);
@@ -1148,6 +1339,9 @@
 
         // 초기화
         loadSavedData();
+
+        // 자동 저장된 세션 확인 및 요약 표시
+        showAutoSavedSummary();
 
         // 앱 시작 시 이전 세션 확인
         const previousSession = loadSessionData();
