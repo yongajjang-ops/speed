@@ -661,19 +661,54 @@
         let autoStopCheckInterval = null;  // 자동 종료 체크 타이머
         const AUTO_STOP_TIMEOUT = 300000;  // 5분 (300초)
 
+        // 비프음 재생 함수
+        function playBeep() {
+            return new Promise((resolve) => {
+                try {
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const oscillator = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
+
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+
+                    oscillator.frequency.value = 880; // A5 음
+                    oscillator.type = 'sine';
+                    gainNode.gain.value = 0.3;
+
+                    oscillator.start();
+
+                    // 0.15초 후 비프음 종료
+                    setTimeout(() => {
+                        oscillator.stop();
+                        audioContext.close();
+                        resolve();
+                    }, 150);
+                } catch (e) {
+                    resolve(); // 오류 시 그냥 진행
+                }
+            });
+        }
+
         // 음성 안내 함수
-        function speakAnnouncement(text) {
+        async function speakAnnouncement(text) {
             if ('speechSynthesis' in window) {
-                // 이전 음성 중지
-                window.speechSynthesis.cancel();
+                // 비프음 재생 후 음성 안내
+                await playBeep();
 
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = 'ko-KR';
-                utterance.rate = 1.0;
-                utterance.pitch = 1.0;
-                utterance.volume = 1.0;
+                // 짧은 딜레이 후 음성 시작
+                setTimeout(() => {
+                    // 이전 음성 중지
+                    window.speechSynthesis.cancel();
 
-                window.speechSynthesis.speak(utterance);
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.lang = 'ko-KR';
+                    utterance.rate = 1.0;
+                    utterance.pitch = 1.0;
+                    utterance.volume = 1.0;
+
+                    window.speechSynthesis.speak(utterance);
+                }, 200);
             }
         }
 
